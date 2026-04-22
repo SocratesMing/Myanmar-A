@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>龙虎榜分析 - 股票分析系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            padding: 30px 0;
+        }
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        .header p {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        .back-link {
+            display: inline-block;
+            color: white;
+            text-decoration: none;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+        .back-link:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .card h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+        .update-time {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th {
+            background: #667eea;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+        .gain-positive {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .board-tag {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .board-sh {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .board-sz {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+        .board-cy {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            font-size: 2rem;
+            margin-bottom: 5px;
+        }
+        .stat-card p {
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-link">← 返回首页</a>
+            <h1>龙虎榜连续上榜股票分析</h1>
+            <p>筛选近3天连续上榜且5日涨幅大于5%的主板/创业板股票</p>
+        </div>
+        
+        <div class="card">
+            <div class="update-time">更新时间: {{ update_time }}</div>
+            
+            {% if stocks %}
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>{{ stocks|length }}</h3>
+                    <p>符合条件的股票数</p>
+                </div>
+                <div class="stat-card">
+                    <h3>{{ stocks[0]['5日涨幅(%)'] }}%</h3>
+                    <p>最高5日涨幅</p>
+                </div>
+                <div class="stat-card">
+                    <h3>{{ stocks[0]['名称'] }}</h3>
+                    <p>涨幅第一名</p>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>排名</th>
+                            <th>代码</th>
+                            <th>名称</th>
+                            <th>板块类型</th>
+                            <th>5日涨幅</th>
+                            <th>最新价</th>
+                            <th>上榜次数</th>
+                            <th>上榜日期</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stock in stocks %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ stock['代码'] }}</td>
+                            <td><strong>{{ stock['名称'] }}</strong></td>
+                            <td>
+                                {% if stock['板块类型'] == '沪市主板' %}
+                                    <span class="board-tag board-sh">{{ stock['板块类型'] }}</span>
+                                {% elif stock['板块类型'] == '深市主板' %}
+                                    <span class="board-tag board-sz">{{ stock['板块类型'] }}</span>
+                                {% else %}
+                                    <span class="board-tag board-cy">{{ stock['板块类型'] }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="gain-positive">{{ stock['5日涨幅(%)'] }}%</td>
+                            <td>¥{{ stock['最新价'] }}</td>
+                            <td>{{ stock['上榜次数'] }}</td>
+                            <td>{{ stock['上榜日期'] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">📭</div>
+                <h3>暂无符合条件的股票</h3>
+                <p>当前没有近3天连续上榜且5日涨幅大于5%的主板/创业板股票</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
