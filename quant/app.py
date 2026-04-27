@@ -10,11 +10,27 @@ import time
 from collections import Counter
 import os
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
 warnings.filterwarnings('ignore')
 
 app = FastAPI(title="Stock Analysis Dashboard")
 
-templates = Jinja2Templates(directory="templates")
+# 获取项目根目录（quant 包的父目录）
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+
+jinja_env = Environment(
+    loader=FileSystemLoader(TEMPLATES_DIR),
+    autoescape=select_autoescape(['html', 'xml']),
+    cache_size=0  # 禁用缓存以避免 dict 类型问题
+)
+
+def templates(name: str, context: dict):
+    from starlette.templating import _TemplateResponse
+    template = jinja_env.get_template(name)
+    request = context.get("request")
+    return _TemplateResponse(template, {"request": request, **context})
 
 
 def get_sectors_with_3day_gains():
@@ -227,17 +243,101 @@ def get_dragon_tiger_3days():
         return []
 
 
+def get_today_market_analysis():
+    """
+    分析今天的行情：涨停板、跌停板、成交量最大等
+    """
+    try:
+        result = {
+            'limit_up': [],
+            'limit_down': [],
+            'volume_top': [],
+            'turnover_top': [],
+            'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        try:
+            limit_up_df = ak.stock_zt_pool_em(date=datetime.now().strftime('%Y%m%d'))
+            if limit_up_df is not None and not limit_up_df.empty:
+                for _, row in limit_up_df.head(20).iterrows():
+                    result['limit_up'].append({
+                        '代码': row.get('代码', 'N/A'),
+                        '名称': row.get('名称', 'N/A'),
+                        '最新价': row.get('最新价', 'N/A'),
+                        '涨跌幅(%)': row.get('涨跌幅', 'N/A'),
+                        '封板时间': row.get('封板时间', 'N/A'),
+                        '连板数': row.get('连板数', 'N/A')
+                    })
+            time.sleep(0.5)
+        except Exception:
+            pass
+        
+        try:
+            limit_down_df = ak.stock_dt_pool_em(date=datetime.now().strftime('%Y%m%d'))
+            if limit_down_df is not None and not limit_down_df.empty:
+                for _, row in limit_down_df.head(20).iterrows():
+                    result['limit_down'].append({
+                        '代码': row.get('代码', 'N/A'),
+                        '名称': row.get('名称', 'N/A'),
+                        '最新价': row.get('最新价', 'N/A'),
+                        '涨跌幅(%)': row.get('涨跌幅', 'N/A')
+                    })
+            time.sleep(0.5)
+        except Exception:
+            pass
+        
+        try:
+            hist_df = ak.stock_zh_a_spot_em()
+            if hist_df is not None and not hist_df.empty:
+                hist_df['成交量'] = pd.to_numeric(hist_df.get('成交量', 0), errors='coerce')
+                hist_df['成交额'] = pd.to_numeric(hist_df.get('成交额', 0), errors='coerce')
+                hist_df['涨跌幅'] = pd.to_numeric(hist_df.get('涨跌幅', 0), errors='coerce')
+                
+                volume_top_df = hist_df.nlargest(20, '成交量')
+                for _, row in volume_top_df.iterrows():
+                    result['volume_top'].append({
+                        '代码': row.get('代码', 'N/A'),
+                        '名称': row.get('名称', 'N/A'),
+                        '最新价': row.get('最新价', 'N/A'),
+                        '涨跌幅(%)': row.get('涨跌幅', 'N/A'),
+                        '成交量': row.get('成交量', 'N/A')
+                    })
+                
+                turnover_top_df = hist_df.nlargest(20, '成交额')
+                for _, row in turnover_top_df.iterrows():
+                    result['turnover_top'].append({
+                        '代码': row.get('代码', 'N/A'),
+                        '名称': row.get('名称', 'N/A'),
+                        '最新价': row.get('最新价', 'N/A'),
+                        '涨跌幅(%)': row.get('涨跌幅', 'N/A'),
+                        '成交额': row.get('成交额', 'N/A')
+                    })
+        except Exception:
+            pass
+        
+        return result
+            
+    except Exception:
+        return {
+            'limit_up': [],
+            'limit_down': [],
+            'volume_top': [],
+            'turnover_top': [],
+            'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """首页"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates("index.html", {"request": request})
 
 
 @app.get("/sectors", response_class=HTMLResponse)
 async def sectors_page(request: Request):
     """板块分析页面"""
     sectors = get_sectors_with_3day_gains()
-    return templates.TemplateResponse(
+    return templates(
         "sectors.html",
         {"request": request, "sectors": sectors, "update_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     )
@@ -248,7 +348,7 @@ async def stocks_page(request: Request):
     """股票筛选页面"""
     sectors = get_sectors_with_3day_gains()
     stocks = get_stocks_from_sectors(sectors)
-    return templates.TemplateResponse(
+    return templates(
         "stocks.html",
         {"request": request, "stocks": stocks, "sectors": sectors, "update_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     )
@@ -258,10 +358,31 @@ async def stocks_page(request: Request):
 async def dragon_tiger_page(request: Request):
     """龙虎榜分析页面"""
     stocks = get_dragon_tiger_3days()
-    return templates.TemplateResponse(
+    return templates(
         "dragon_tiger.html",
         {"request": request, "stocks": stocks, "update_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     )
+
+
+@app.get("/today", response_class=HTMLResponse)
+async def today_page(request: Request):
+    """今天行情页面"""
+    market_data = get_today_market_analysis()
+    return templates(
+        "today.html",
+        {"request": request, "market_data": market_data, "update_time": market_data['update_time']}
+    )
+
+
+@app.get("/api/today")
+async def today_api():
+    """今天行情API接口"""
+    market_data = get_today_market_analysis()
+    return {
+        "status": "success",
+        "data": market_data,
+        "update_time": market_data['update_time']
+    }
 
 
 @app.get("/api/dragon-tiger")
